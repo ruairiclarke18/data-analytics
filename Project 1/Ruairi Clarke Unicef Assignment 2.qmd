@@ -1,0 +1,136 @@
+---
+title: "UNICEF Coding Assignment"
+author: "Ruairi Clarke"
+format: html
+editor: visual
+---
+
+```{r, echo = FALSE, output=FALSE}
+# load in relevant packages
+library(ggplot2)
+library(maps)
+library(tidyverse)
+library(viridis)
+```
+
+## Data Transformations
+
+```{r echo=FALSE}
+# import all the data files
+data_defac <- read.csv("C:/Users/Home/Downloads/unicef_indicator_1.csv")
+data_HIV <- read.csv("C:/Users/Home/Downloads/unicef_indicator_2.csv")
+metadata <- read.csv("C:/Users/Home/Downloads/unicef_metadata.csv")
+```
+
+```{r echo=FALSE}
+# change the metadata column names for clarity
+metadata <- metadata %>% rename("Population" = "Population..total",
+                     "GDP per capita (2015 US$)" = "GDP.per.capita..constant.2015.US..",
+                     "GNI (Current US$)" = "GNI..current.US..",
+                     "Inflation, consumer prices (annual %)" = "Inflation..consumer.prices..annual...",
+                     "Life Expectancy at Birth (years)" = "Life.expectancy.at.birth..total..years.",
+                     "Military Expenditure (% of GDP)" = "Military.expenditure....of.GDP.")
+```
+
+## World Map graph
+
+I was unable to incorporate a story into this particular graph due to the layout of my data set. However, had I of manged to link the proportion of population practicing open defecation to the graph we would expect to see a darker shade of green around central Africa in countries like Niger as this is what my data has shown.
+
+```{r echo=FALSE}
+# download the lonlat data
+world_map <- map_data("world") %>%
+  select(long, lat, region, group)
+
+# check how many countries will be ommitted
+bin_list <- unique(data_defac$country) %in% unique(world_map$region)
+length(bin_list[!bin_list])
+```
+
+```{r echo=FALSE}
+worldplot <- ggplot() +
+  geom_map(
+    data = world_map, map = world_map,
+    aes(long, lat, map_id = region),
+    col = "white", fill = "darkgreen", size = 0.2
+  )
+  
+worldplot
+```
+
+### Bar Chart of HIV Testing
+
+The bar chart shows the top ten countries with the highest rates of testing for HIV amongst young people. To my initial surprise all of the top countries shown were African as I was aware that there was no direct link between HIV and open defecation. However, upon further research I discovered that there was a high prevalence of HIV amongst African countries and hence the high rates of testing. Also, there have been great initiatives launched by global health organisations to increase awareness around HIV with increased education and widespread testing campaigns made possible through increased funding.
+
+```{r echo=FALSE}
+# get the average % of population tested for HIV over all years
+avg_HIV <- data_HIV %>%
+  group_by(alpha_3_code) %>%
+  summarise(average_tested = mean(`obs_value`))
+# country code is used rather than country for conciseness
+
+# get the top 10 countries out of this list
+top10_avg_HIV <- avg_HIV %>%
+  arrange(desc(average_tested)) %>% 
+  head(10)
+
+# bar chart of top 10 countries by % of ever being tested for HIV
+ggplot(top10_avg_HIV, aes(x = reorder(alpha_3_code, average_tested), 
+                          y = average_tested,
+                          fill = average_tested)) +
+  geom_bar(stat = "identity") + 
+  labs(title = "Top 10 Countries by % Tested for HIV", x = "Country Code",
+       y = "Average % Tested for HIV") +
+  guides(fill = guide_legend(title = NULL, reverse = T)) +
+  scale_fill_viridis_c()
+```
+
+### Scatter Plot of GDP per Capita vs Life Expectancy in 2021
+
+```{r echo=FALSE}
+# create a new data frame which contains each countries GDP per capita and % practising outdoor defecation in 2021
+
+joined_data <- metadata %>%
+  filter(year == "2021") %>%
+  inner_join(data_defac %>% filter(time_period == "2021"),
+             by = "country") %>%
+  select("country", "GDP per capita (2015 US$)", "Population",
+         "obs_value", "Life Expectancy at Birth (years)") %>%
+  # remove all rows with null values
+  filter(complete.cases(.))
+
+ggplot(joined_data, aes(x = `Life Expectancy at Birth (years)`,
+                        y = `GDP per capita (2015 US$)`)) +
+  geom_point(color = "darkorange2") +
+  labs(title = "Life Expectancy vs. GDP per capita") +
+  geom_smooth(method = "lm", color = "blue") +
+  geom_smooth(method = "gam", color = "green")
+```
+
+We see above the relationship between GDP per Capita and Life Expectancy at birth in 2021 across the world. The relationship does not seem entirely linear, as the strength of the positive relationship between these 2 variables changes at around the 75 year mark where it become much stronger.
+
+When we try to fit a simple linear regression model (blue) to the data, it cannot accurartely represent the relationship as it does not fit the data well and actually predicts negative GDP pre Capita at lower values of Life Expectancy. To counter this, we use a "GAM" model (green) which allows for non-linear relationships. This fits the data much better and we can see how the relationship between the 2 variables change as Life Expectancy increases.
+
+## Time series of % GDP
+
+We can view the population of the top 10 most populated countries (in 2021) in the unicef data set over the years. We can see how China and India have always been leading the pack here.
+
+```{r echo=FALSE}
+# extract the top 10 most populated countries in 2022
+top_10_countries <- metadata %>%
+  filter(year == "2021") %>%
+  arrange(desc(Population)) %>%
+  select(country) %>%
+  head(10)
+
+# now get the all population data from these 10 countries
+top_10_pop <- metadata %>%
+  select(country, year, Population) %>%
+  filter(country %in% top_10_countries$country)
+
+# now we can graph this time series
+ggplot(top_10_pop, aes(x = year,y = Population,
+                       col = country)) +
+  geom_line(stat = "identity") +
+  labs(title = "Top 10 Countries by Population (2021)", x = "Year", 
+       y = "Population")
+```
